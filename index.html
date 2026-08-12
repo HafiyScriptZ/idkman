@@ -78,13 +78,44 @@ function dec(s){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";
 function base(){return location.href.split("#")[0]}
 function route(){var h=location.hash;if(h.indexOf("#raw=")===0){var rawCode=dec(h.slice(5));document.getElementById("app").style.display="none";document.getElementById("rawOv").style.display="flex";var lines=rawCode.split('\n'),html='';for(var i=0;i<lines.length;i++)html+='<span class="line">'+esc(lines[i])+'</span>';document.getElementById("rawPre").innerHTML=html;return}document.getElementById("rawOv").style.display="none";document.getElementById("app").style.display="block";if(h.indexOf("#p=")===0)showPaste(h.slice(3));else{document.getElementById("pHome").style.display="block";document.getElementById("pView").style.display="none"}}
 addEventListener("hashchange",route);
-function uploadPaste(content){var formData=new FormData();formData.append('content',content);return fetch('https://api.mclo.gs/1/log',{method:'POST',body:formData}).then(function(r){return r.json()}).then(function(j){if(!j.success||!j.id)throw new Error('fail');return j.id})}
+
+// BULLETPROOF UPLOAD: Tries mclo.gs first, falls back to paste.gg if blocked
+function uploadPaste(content) {
+  var formData = new FormData();
+  formData.append('content', content);
+  return fetch('https://api.mclo.gs/1/log', { method: 'POST', body: formData })
+    .then(function(r) { 
+      if (!r.ok) throw new Error('mclo failed');
+      return r.json(); 
+    })
+    .then(function(j) {
+      if (j.success && j.id) return "https://api.mclo.gs/1/raw/" + j.id;
+      throw new Error('mclo no id');
+    })
+    .catch(function() {
+      return fetch('https://api.paste.gg/v1/pastes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: "HAFIY PASTE",
+          files: [{ name: "script.lua", content: { format: "text", value: content } }]
+        })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (j.status === 'success' && j.result && j.result.files && j.result.files[0]) {
+          return "https://api.paste.gg/v1/pastes/" + j.result.id + "/files/" + j.result.files[0].id + "/raw";
+        }
+        throw new Error('paste.gg failed');
+      });
+    });
+}
+
 function createPaste(){
   var t=document.getElementById("pT").value.trim()||"Untitled",c=document.getElementById("pB").value;
   if(!c.trim())return toastMsg("Nothing!",1);
   toastMsg("Uploading...");
-  uploadPaste(c).then(function(id){
-    var link="https://api.mclo.gs/1/raw/"+id;
+  uploadPaste(c).then(function(link){
     document.getElementById("res").innerHTML='<div class="r"><input readonly id="nl"/><button class="b sm g" id="cl">COPY LINK</button><button class="b sm" id="op" style="margin-left:4px">OPEN</button></div>';
     document.getElementById("nl").value=link;
     document.getElementById("cl").onclick=function(){copyText(link)};
@@ -106,7 +137,7 @@ function showPaste(d){
   var v=document.getElementById("pView");v.style.display="block";
   v.innerHTML='<div class="ph"><h2>'+esc(o.t)+'</h2><button class="b sm y" id="bR">RAW</button><button class="b sm g" id="bC">COPY</button><button class="b sm" id="bL">LINK</button><button class="b sm y" id="bH">NEW</button></div><pre class="c" id="cp"></pre>';
   document.getElementById("cp").textContent=o.c;
-  document.getElementById("bR").onclick=function(){toastMsg("Uploading...");uploadPaste(o.c).then(function(id){var link="https://api.mclo.gs/1/raw/"+id;copyText(link);window.open(link,"_blank")}).catch(function(){location.href=base()+"#raw="+enc(o.c)})};
+  document.getElementById("bR").onclick=function(){toastMsg("Uploading...");uploadPaste(o.c).then(function(link){copyText(link);window.open(link,"_blank")}).catch(function(){location.href=base()+"#raw="+enc(o.c)})};
   document.getElementById("bC").onclick=function(){copyText(o.c)};
   document.getElementById("bL").onclick=function(){copyText(base()+"#p="+d)};
   document.getElementById("bH").onclick=function(){location.href=base()};
